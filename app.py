@@ -77,15 +77,14 @@ def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
-# 背景の明るさを判定して最適な文字色を返す関数（視認性確保のため）
+# 背景の明るさを判定して最適な文字色を返す関数
 def get_ideal_text_color(bg_hex):
     rgb = hex_to_rgb(bg_hex)
-    # 輝度の計算式 (Luminance)
     luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
     if luminance > 0.5:
-        return (40, 40, 40)    # 背景が明るい時は上品なダークグレー
+        return (40, 40, 40)    # 背景が明るい時はダークグレー
     else:
-        return (240, 240, 240) # 背景が暗い時は上品なライトグレー
+        return (240, 240, 240) # 背景が暗い時はライトグレー
 
 # ─── 画面UIの構築 ───
 st.header("1. 作品情報を入力")
@@ -96,10 +95,16 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-# ─── 【新機能】デザイン設定 ───
+# ─── デザイン設定（機能追加） ───
 st.header("2. デザインを設定")
-# カラーピッカーを追加。初期値は白（#FFFFFF）
 bg_color_hex = st.color_picker("背景の色を選んでください", "#FFFFFF")
+
+# 【新機能】文字サイズを調整するスライダーを追加
+col_size1, col_size2 = st.columns(2)
+with col_size1:
+    font_size_large = st.slider("作品名の文字サイズ", min_value=12, max_value=72, value=36, step=2)
+with col_size2:
+    font_size_normal = st.slider("その他の文字サイズ（メーカー・カメラ等）", min_value=12, max_value=72, value=24, step=2)
 
 st.header("3. 画像をアップロード")
 uploaded_files = st.file_uploader(
@@ -120,12 +125,8 @@ if uploaded_files and input_t.strip():
     border_thin_px = 50
     border_bottom_px = 160
     
-    # 【新機能】選択された色を枠と文字に適用
     border_color = hex_to_rgb(bg_color_hex)
     text_color = get_ideal_text_color(bg_color_hex)
-    
-    font_size_normal = 24
-    font_size_large = 36
 
     for uploaded_file in uploaded_files:
         # 画像の読み込み
@@ -147,7 +148,7 @@ if uploaded_files and input_t.strip():
         framed_img.paste(img, (border_thin_px, border_thin_px))
         draw = ImageDraw.Draw(framed_img)
 
-        # フォント設定
+        # フォント設定（スライダーの値がここに連動します）
         try:
             if FONT_PATH and os.path.exists(FONT_PATH):
                 font_normal = ImageFont.truetype(FONT_PATH, font_size_normal)
