@@ -8,11 +8,10 @@ from PIL import Image, ImageDraw, ImageFont
 # 画面のタイトル設定
 st.set_page_config(page_title="プラモ画像 枠付けツール", layout="centered")
 st.title("📸 プラモ画像 枠付けツール")
-st.write("画像をアップロードするだけで、上品な白枠とExifデータを追加します。")
+st.write("画像をアップロードするだけで、上品な枠とExifデータを追加します。")
 
 def get_system_serif_font():
     """GitHubに一緒に上げたフォントファイルを最優先で読み込む"""
-    # ─── 【重要】GitHubにアップロードしたフォントファイル名 ───
     local_font = "NotoSerifJP-Regular.ttf" 
     
     if os.path.exists(local_font):
@@ -73,7 +72,22 @@ def get_exif_data(img):
 
     return cam, lens, cond
 
-# ─── 画面UIの構築（ここが消えてしまっていました） ───
+# HEXカラーコードをRGBタプルに変換する関数
+def hex_to_rgb(hex_str):
+    hex_str = hex_str.lstrip('#')
+    return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+
+# 背景の明るさを判定して最適な文字色を返す関数（視認性確保のため）
+def get_ideal_text_color(bg_hex):
+    rgb = hex_to_rgb(bg_hex)
+    # 輝度の計算式 (Luminance)
+    luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+    if luminance > 0.5:
+        return (40, 40, 40)    # 背景が明るい時は上品なダークグレー
+    else:
+        return (240, 240, 240) # 背景が暗い時は上品なライトグレー
+
+# ─── 画面UIの構築 ───
 st.header("1. 作品情報を入力")
 col1, col2 = st.columns(2)
 with col1:
@@ -82,7 +96,12 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-st.header("2. 画像をアップロード")
+# ─── 【新機能】デザイン設定 ───
+st.header("2. デザインを設定")
+# カラーピッカーを追加。初期値は白（#FFFFFF）
+bg_color_hex = st.color_picker("背景の色を選んでください", "#FFFFFF")
+
+st.header("3. 画像をアップロード")
 uploaded_files = st.file_uploader(
     "JPG / PNG 画像を選択（複数選択可）", 
     type=["jpg", "jpeg", "png"], 
@@ -91,7 +110,7 @@ uploaded_files = st.file_uploader(
 
 # 処理実行
 if uploaded_files and input_t.strip():
-    st.header("3. 変換結果")
+    st.header("4. 変換結果")
     
     center_text = input_t.strip()
     manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
@@ -100,8 +119,11 @@ if uploaded_files and input_t.strip():
 
     border_thin_px = 50
     border_bottom_px = 160
-    border_color = (255, 255, 255)
-    text_color = (40, 40, 40)
+    
+    # 【新機能】選択された色を枠と文字に適用
+    border_color = hex_to_rgb(bg_color_hex)
+    text_color = get_ideal_text_color(bg_color_hex)
+    
     font_size_normal = 24
     font_size_large = 36
 
