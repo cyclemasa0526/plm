@@ -7,8 +7,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 # 画面のタイトル設定
 st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="centered")
-st.title("📸 プラモ画像 データ刻印ツール（枠なし）")
-st.write("画像の中に直接、上品な明朝体で作品名とExifデータを刻印します。")
+st.title("📸 プラモ画像 データ刻印ツール")
+st.write("画像からExif（撮影情報）を自動取得し、お好みの位置に文字を刻印します。")
 
 def get_system_serif_font():
     """GitHubに一緒に上げたフォントファイルを最優先で読み込む"""
@@ -84,13 +84,22 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-# ─── デザイン設定 ───
-st.header("2. デザインを設定")
+# ─── デザイン・位置設定（新機能） ───
+st.header("2. デザインと配置を設定")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
     text_color_hex = st.color_picker("文字の色を選んでください", "#FFFFFF")
 with col_c2:
-    bg_opacity = st.slider("文字の後ろの黒帯（透過度）", min_value=0, max_value=100, value=40, step=5)
+    # 【新機能】文字の配置場所を選択肢として追加
+    position_option = st.selectbox(
+        "文字を配置する場所",
+        ["左下（作品名）＆ 右下（撮影データ）", 
+         "左上（作品名）＆ 右上（撮影データ）", 
+         "左下（すべて配置）", 
+         "右下（すべて配置）"]
+    )
+
+bg_opacity = st.slider("文字の後ろの黒帯（透過度）", min_value=0, max_value=100, value=40, step=5)
 
 col_size1, col_size2 = st.columns(2)
 with col_size1:
@@ -118,10 +127,10 @@ if uploaded_files and input_t.strip():
     margin_px = 30  # 画像の端からの余白
 
     for uploaded_file in uploaded_files:
-        # 画像の読み込み（RGBAモードに変換して透明度を扱えるようにする）
         base_img = Image.open(uploaded_file).convert("RGBA")
         width, height = base_img.size
 
+        # Exifデータの取得
         cam, lens, cond = get_exif_data(base_img)
         right_texts = [
             f"CAM: {cam}" if cam else "",
@@ -130,11 +139,9 @@ if uploaded_files and input_t.strip():
         ]
         right_texts = [t for t in right_texts if t != ""]
 
-        # 文字入れ用の透明なレイヤーを作成
         txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
 
-        # フォント設定
         try:
             if FONT_PATH and os.path.exists(FONT_PATH):
                 font_normal = ImageFont.truetype(FONT_PATH, font_size_normal)
@@ -146,7 +153,7 @@ if uploaded_files and input_t.strip():
 
         line_spacing = 8
 
-        # 1. 各テキストのサイズを計算して配置を決める
+        # ─── 各テキストのサイズ計算 ───
         left_heights = []
         if center_text:
             bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
@@ -154,7 +161,6 @@ if uploaded_files and input_t.strip():
         for t in left_sub_texts:
             bbox_s = draw.textbbox((0, 0), t, font=font_normal)
             left_heights.append(bbox_s[3] - bbox_s[1])
-            
         total_left_height = sum(left_heights) + (line_spacing * (len(left_heights) - 1)) if left_heights else 0
 
         if right_texts:
@@ -163,46 +169,88 @@ if uploaded_files and input_t.strip():
             right_heights = [b[3] - b[1] for b in right_bboxes]
             total_right_height = sum(right_heights) + (line_spacing * (len(right_texts) - 1))
         else:
-            total_right_height = 0
+            total_right_height = right_widths = right_heights = right_bboxes = 0
 
-        # テキストエリア全体の高さを決定
-        text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
-        band_top_y = height - text_zone_height
-        bottom_center_y = height - (text_zone_height / 2)
+        # ─── 配置ロジックと黒帯の描画 ───
+        is_top = "右上" in position_option or "左上" in position_option
+        is_split = "＆" in position_option
 
-        # 2. 【視認性向上】文字の後ろに半透明の黒い帯（座布団）を敷く
+        if is_split:
+            text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
+        else:
+            text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
+
+        # 黒帯の描画位置
         if bg_opacity > 0:
             alpha = int(255 * (bg_opacity / 100))
-            # 画像の下部に黒い半透明の長方形を描画
-            draw.rectangle([(0, band_top_y), (width, height)], fill=(0, 0, 0, alpha))
+            if is_top:
+                draw.rectangle([(0, 0), (width, text_zone_height)], fill=(0, 0, 0, alpha))
+            else:
+                draw.rectangle([(0, height - text_zone_height), (width, height)], fill=(0, 0, 0, alpha))
 
-        # 3. 左下テキストの描画
-        if left_heights:
-            current_y_left = bottom_center_y - (total_left_height / 2)
+        # 基準となるY座標の決定
+        if is_top:
+            center_y = text_zone_height / 2
+        else:
+            center_y = height - (text_zone_height / 2)
+
+        # ─── 実際の文字描画 ───
+        if position_option == "左下（作品名）＆ 右下（撮影データ）" or position_option == "左上（作品名）＆ 右上（撮影データ）":
+            # 左右分割配置
+            if left_heights:
+                current_y_left = center_y - (total_left_height / 2)
+                if center_text:
+                    bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
+                    draw.text((margin_px, current_y_left - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
+                    current_y_left += (bbox_c[3] - bbox_c[1]) + line_spacing
+                for t in left_sub_texts:
+                    bbox_s = draw.textbbox((0, 0), t, font=font_normal)
+                    draw.text((margin_px, current_y_left - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
+                    current_y_left += (bbox_s[3] - bbox_s[1]) + line_spacing
+
+            if right_texts:
+                current_y_right = center_y - (total_right_height / 2)
+                for i, t in enumerate(right_texts):
+                    text_x = width - margin_px - right_widths[i]
+                    draw.text((text_x, current_y_right - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
+                    current_y_right += right_heights[i] + line_spacing
+
+        else:
+            # 片側まとめ配置（左下 または 右下）
+            x_pos = margin_px if "左下" in position_option else None
+            
+            # 全体の縦幅の中央から描画を開始
+            current_y = center_y - (text_zone_height - margin_px * 2) / 2
+            
+            # 作品名パート
             if center_text:
                 bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
-                draw.text((margin_px, current_y_left - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
-                current_y_left += (bbox_c[3] - bbox_c[1]) + line_spacing
+                final_x = x_pos if x_pos is not None else width - margin_px - (bbox_c[2] - bbox_c[0])
+                draw.text((final_x, current_y - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
+                current_y += (bbox_c[3] - bbox_c[1]) + line_spacing
             for t in left_sub_texts:
                 bbox_s = draw.textbbox((0, 0), t, font=font_normal)
-                draw.text((margin_px, current_y_left - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
-                current_y_left += (bbox_s[3] - bbox_s[1]) + line_spacing
+                final_x = x_pos if x_pos is not None else width - margin_px - (bbox_s[2] - bbox_s[0])
+                draw.text((final_x, current_y - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
+                current_y += (bbox_s[3] - bbox_s[1]) + line_spacing
+                
+            if left_heights and right_texts:
+                current_y += line_spacing
+                
+            # 撮影データパート
+            if right_texts:
+                for i, t in enumerate(right_texts):
+                    final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
+                    draw.text((final_x, current_y - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
+                    current_y += right_heights[i] + line_spacing
 
-        # 4. 右下テキストの描画
-        if right_texts:
-            current_y_right = bottom_center_y - (total_right_height / 2)
-            for i, t in enumerate(right_texts):
-                text_x = width - margin_px - right_widths[i]
-                draw.text((text_x, current_y_right - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
-                current_y_right += right_heights[i] + line_spacing
-
-        # 元画像と文字レイヤーを合成し、通常のRGB画像（JPEG用）に戻す
+        # 合成
         final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
 
-        # 画面にプレビュー表示
+        # プレビュー表示
         st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
         
-        # ダウンロードボタンの設置
+        # ダウンロード
         buf = io.BytesIO()
         final_img.save(buf, format="JPEG", quality=95)
         byte_im = buf.getvalue()
