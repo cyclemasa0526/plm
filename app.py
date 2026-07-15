@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 # 画面のタイトル設定
 st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="centered")
 st.title("📸 プラモ画像 データ刻印ツール")
-st.write("画像からExif（撮影情報）を自動取得し、お好みの位置に文字を刻印します。")
+st.write("画像からExif（撮影情報）の自動取得を試みます。読み込めない場合は手動入力も可能です。")
 
 def get_system_serif_font():
     """GitHubに一緒に上げたフォントファイルを最優先で読み込む"""
@@ -84,13 +84,22 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-# ─── デザイン・位置設定（新機能） ───
-st.header("2. デザインと配置を設定")
+# ─── 【新機能】撮影データの手動入力（Exifが無いとき用） ───
+st.header("2. 撮影情報を入力（Exifがない場合や書き換えたい場合）")
+col_e1, col_e2, col_e3 = st.columns(3)
+with col_e1:
+    manual_cam = st.text_input("カメラ名（任意）", placeholder="Sony α7IV, iPhone 15 など")
+with col_e2:
+    manual_lens = st.text_input("レンズ名（任意）", placeholder="FE 35mm F1.4 など")
+with col_e3:
+    manual_cond = st.text_input("撮影条件（任意）", placeholder="1/125s  f/2.8  ISO400 など")
+
+# ─── デザイン・位置設定 ───
+st.header("3. デザインと配置を設定")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
     text_color_hex = st.color_picker("文字の色を選んでください", "#FFFFFF")
 with col_c2:
-    # 【新機能】文字の配置場所を選択肢として追加
     position_option = st.selectbox(
         "文字を配置する場所",
         ["左下（作品名）＆ 右下（撮影データ）", 
@@ -99,15 +108,13 @@ with col_c2:
          "右下（すべて配置）"]
     )
 
-bg_opacity = st.slider("文字の後ろの黒帯（透過度）", min_value=0, max_value=100, value=40, step=5)
-
 col_size1, col_size2 = st.columns(2)
 with col_size1:
     font_size_large = st.slider("作品名の文字サイズ", min_value=12, max_value=72, value=36, step=2)
 with col_size2:
     font_size_normal = st.slider("その他の文字サイズ", min_value=12, max_value=72, value=24, step=2)
 
-st.header("3. 画像をアップロード")
+st.header("4. 画像をアップロード")
 uploaded_files = st.file_uploader(
     "JPG / PNG 画像を選択（複数選択可）", 
     type=["jpg", "jpeg", "png"], 
@@ -116,7 +123,7 @@ uploaded_files = st.file_uploader(
 
 # 処理実行
 if uploaded_files and input_t.strip():
-    st.header("4. 変換結果")
+    st.header("5. 変換結果")
     
     center_text = input_t.strip()
     manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
@@ -130,8 +137,14 @@ if uploaded_files and input_t.strip():
         base_img = Image.open(uploaded_file).convert("RGBA")
         width, height = base_img.size
 
-        # Exifデータの取得
+        # Exifデータの自動取得を試みる
         cam, lens, cond = get_exif_data(base_img)
+        
+        # もし自動取得できず、かつ手動入力があればそちらを採用する
+        if not cam and manual_cam.strip(): cam = manual_cam.strip()
+        if not lens and manual_lens.strip(): lens = manual_lens.strip()
+        if not cond and manual_cond.strip(): cond = manual_cond.strip()
+
         right_texts = [
             f"CAM: {cam}" if cam else "",
             f"LNS: {lens}" if lens else "",
@@ -171,7 +184,7 @@ if uploaded_files and input_t.strip():
         else:
             total_right_height = right_widths = right_heights = right_bboxes = 0
 
-        # ─── 配置ロジックと黒帯の描画 ───
+        # ─── 配置エリアの計算 ───
         is_top = "右上" in position_option or "左上" in position_option
         is_split = "＆" in position_option
 
@@ -180,23 +193,15 @@ if uploaded_files and input_t.strip():
         else:
             text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
 
-        # 黒帯の描画位置
-        if bg_opacity > 0:
-            alpha = int(255 * (bg_opacity / 100))
-            if is_top:
-                draw.rectangle([(0, 0), (width, text_zone_height)], fill=(0, 0, 0, alpha))
-            else:
-                draw.rectangle([(0, height - text_zone_height), (width, height)], fill=(0, 0, 0, alpha))
+        # 【変更】黒帯（rectangle）の描画処理を完全に削除しました
 
-        # 基準となるY座標の決定
         if is_top:
             center_y = text_zone_height / 2
         else:
             center_y = height - (text_zone_height / 2)
 
-        # ─── 実際の文字描画 ───
+        # ─── 文字描画 ───
         if position_option == "左下（作品名）＆ 右下（撮影データ）" or position_option == "左上（作品名）＆ 右上（撮影データ）":
-            # 左右分割配置
             if left_heights:
                 current_y_left = center_y - (total_left_height / 2)
                 if center_text:
@@ -216,13 +221,9 @@ if uploaded_files and input_t.strip():
                     current_y_right += right_heights[i] + line_spacing
 
         else:
-            # 片側まとめ配置（左下 または 右下）
             x_pos = margin_px if "左下" in position_option else None
-            
-            # 全体の縦幅の中央から描画を開始
             current_y = center_y - (text_zone_height - margin_px * 2) / 2
             
-            # 作品名パート
             if center_text:
                 bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
                 final_x = x_pos if x_pos is not None else width - margin_px - (bbox_c[2] - bbox_c[0])
@@ -237,7 +238,6 @@ if uploaded_files and input_t.strip():
             if left_heights and right_texts:
                 current_y += line_spacing
                 
-            # 撮影データパート
             if right_texts:
                 for i, t in enumerate(right_texts):
                     final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
