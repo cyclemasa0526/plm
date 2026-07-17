@@ -179,7 +179,7 @@ if uploaded_files and input_t.strip():
         ]
         right_texts = [t for t in [r for r in right_texts if r != ""]]
 
-        txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
+        txt_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(txt_layer)
 
         try:
