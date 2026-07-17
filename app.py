@@ -10,24 +10,43 @@ st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout
 st.title("📸 プラモ画像 データ刻印ツール")
 st.write("画像からExif（撮影情報）の自動取得を試みます。読み込めない場合は手動入力も可能です。")
 
-def get_system_serif_font():
-    """GitHubに一緒に上げたフォントファイルを最優先で読み込む"""
-    local_font = "NotoSerifJP-Regular.ttf" 
+def get_available_fonts():
+    """環境ごとに利用可能なフォントのパスと名前のマッピングを返す"""
+    # 候補となるフォント設定 (名前: パス)
+    font_candidates = {
+        "Noto Serif JP (同梱フォント)": "NotoSerifJP-Regular.ttf",
+        # Windows
+        "游明朝 (Windows)": "C:\\Windows\\Fonts\\yumin.ttf",
+        "游ゴシック (Windows)": "C:\\Windows\\Fonts\\yuitalic.ttf",
+        "メイリオ (Windows)": "C:\\Windows\\Fonts\\meiryo.ttc",
+        "MS Pゴシック (Windows)": "C:\\Windows\\Fonts\\msgothic.ttc",
+        "MS P明朝 (Windows)": "C:\\Windows\\Fonts\\msmincho.ttc",
+        # Mac
+        "ヒラギノ明朝 ProN (Mac)": "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
+        "ヒラギノ角ゴ ProN (Mac)": "/System/Library/Fonts/ヒラギノ角ゴ ProN.ttc",
+        "クレー (Mac)": "/System/Library/Fonts/Klee.ttc",
+        # Linux / Streamlit Cloud用バックアップ
+        "Noto Sans CJK (Linux)": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "IPAex明朝 (Linux)": "/usr/share/fonts/truetype/ipaexfont/ipaexm.ttf",
+        "IPAexゴシック (Linux)": "/usr/share/fonts/truetype/ipaexfont/ipaexg.ttf",
+        "D標音ゴシック (Linux)": "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+        "D標音明朝 (Linux)": "/usr/share/fonts/truetype/fonts-japanese-mincho.ttf",
+    }
     
-    if os.path.exists(local_font):
-        return local_font
+    # 実際に存在するフォントだけを絞り込む
+    available = {}
+    for name, path in font_candidates.items():
+        if os.path.exists(path):
+            available[name] = path
+            
+    # もし一つも見つからなかった場合のセーフティ
+    if not available:
+        available["システム標準フォント"] = "DEFAULT"
         
-    # 見つからない場合のバックアップ（PCローカル環境など）
-    paths = [
-        "/usr/share/fonts/truetype/fonts-japanese-mincho.ttf",
-        "C:\\Windows\\Fonts\\yumin.ttf",
-        "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc"
-    ]
-    for p in paths:
-        if os.path.exists(p): return p
-    return None
+    return available
 
-FONT_PATH = get_system_serif_font()
+# 利用可能なフォントリストを取得
+AVAILABLE_FONTS = get_available_fonts()
 
 def get_exif_data(img):
     exif_data = {}
@@ -84,7 +103,7 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-# ─── 【新機能】撮影データの手動入力（Exifが無いとき用） ───
+# ─── 撮影データの手動入力 ───
 st.header("2. 撮影情報を入力（Exifがない場合や書き換えたい場合）")
 col_e1, col_e2, col_e3 = st.columns(3)
 with col_e1:
@@ -107,6 +126,17 @@ with col_c2:
          "左下（すべて配置）", 
          "右下（すべて配置）"]
     )
+
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    # 【新機能】フォントの選択ボックス
+    selected_font_name = st.selectbox(
+        "使用するフォント",
+        options=list(AVAILABLE_FONTS.keys())
+    )
+    selected_font_path = AVAILABLE_FONTS[selected_font_name]
+with col_f2:
+    pass
 
 col_size1, col_size2 = st.columns(2)
 with col_size1:
@@ -134,13 +164,13 @@ if uploaded_files and input_t.strip():
     margin_px = 30  # 画像の端からの余白
 
     for uploaded_file in uploaded_files:
-        # 【修正】まずは生の状態で画像を開く（Exifを保持するため）
+        # まずは生の状態で画像を開く（Exifを保持するため）
         raw_img = Image.open(uploaded_file)
 
-        # 【修正】Exifデータの自動取得を「RGBAに変換する前」に実行する
+        # Exifデータの自動取得を「RGBAに変換する前」に実行する
         cam, lens, cond = get_exif_data(raw_img)
 
-        # 【修正】Exif抽出後に、描画レイヤー処理のためRGBAに変換する
+        # Exif抽出後に、描画レイヤー処理のためRGBAに変換する
         base_img = raw_img.convert("RGBA")
         width, height = base_img.size
         
@@ -150,19 +180,20 @@ if uploaded_files and input_t.strip():
         if not cond and manual_cond.strip(): cond = manual_cond.strip()
 
         right_texts = [
-            f"Shot on: {cam}" if cam else "",
+            f"CAM: {cam}" if cam else "",
             f"LNS: {lens}" if lens else "",
             f"EXF: {cond}" if cond else ""
         ]
-        right_texts = [t for t in right_texts if t != ""]
+        right_texts = [t for t in [r for r in right_texts if r != ""]]
 
         txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
 
+        # 【新機能対応】選択されたフォントの読み込み処理
         try:
-            if FONT_PATH and os.path.exists(FONT_PATH):
-                font_normal = ImageFont.truetype(FONT_PATH, font_size_normal)
-                font_large = ImageFont.truetype(FONT_PATH, font_size_large)
+            if selected_font_path != "DEFAULT" and os.path.exists(selected_font_path):
+                font_normal = ImageFont.truetype(selected_font_path, font_size_normal)
+                font_large = ImageFont.truetype(selected_font_path, font_size_large)
             else:
                 font_normal = font_large = ImageFont.load_default()
         except Exception:
