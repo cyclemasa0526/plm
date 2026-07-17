@@ -134,11 +134,15 @@ if uploaded_files and input_t.strip():
     margin_px = 30  # 画像の端からの余白
 
     for uploaded_file in uploaded_files:
-        base_img = Image.open(uploaded_file).convert("RGBA")
-        width, height = base_img.size
+        # 【修正】まずは生の状態で画像を開く（Exifを保持するため）
+        raw_img = Image.open(uploaded_file)
 
-        # Exifデータの自動取得を試みる
-        cam, lens, cond = get_exif_data(base_img)
+        # 【修正】Exifデータの自動取得を「RGBAに変換する前」に実行する
+        cam, lens, cond = get_exif_data(raw_img)
+
+        # 【修正】Exif抽出後に、描画レイヤー処理のためRGBAに変換する
+        base_img = raw_img.convert("RGBA")
+        width, height = base_img.size
         
         # もし自動取得できず、かつ手動入力があればそちらを採用する
         if not cam and manual_cam.strip(): cam = manual_cam.strip()
@@ -192,8 +196,6 @@ if uploaded_files and input_t.strip():
             text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
         else:
             text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
-
-        # 【変更】黒帯（rectangle）の描画処理を完全に削除しました
 
         if is_top:
             center_y = text_zone_height / 2
