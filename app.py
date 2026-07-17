@@ -6,8 +6,9 @@ import glob
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-# 画面のタイトル設定
-st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="centered")
+# 【変更】左右分割を綺麗に見せるため、横幅いっぱいに使うwideレイアウトに変更
+st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="wide")
+
 st.title("📸 プラモ画像 データ刻印ツール")
 st.write("画像からExif（撮影情報）の自動取得を試みます。読み込めない場合は手動入力も可能です。")
 
@@ -15,13 +16,13 @@ def get_available_fonts():
     """同じフォルダ内のフォントファイルと、環境ごとのシステムフォントを統合して返す"""
     available = {}
 
-    # 1. 【Webアプリ用最優先】プログラムと同じフォルダ内にあるフォントファイルを自動検索
+    # 1. プログラムと同じフォルダ内にあるフォントファイルを自動検索
     local_fonts = glob.glob("*.ttf") + glob.glob("*.otf") + glob.glob("*.ttc")
     for path in local_fonts:
         name = os.path.splitext(os.path.basename(path))[0]
         available[f"📁 {name}"] = path
 
-    # 2. システムフォントの候補（PCローカル環境用バックアップ）
+    # 2. システムフォントの候補
     font_candidates = {
         "游明朝 (Windows)": "C:\\Windows\\Fonts\\yumin.ttf",
         "游ゴシック (Windows)": "C:\\Windows\\Fonts\\yuitalic.ttf",
@@ -92,29 +93,24 @@ def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
-# ─── 画面UIの構築 ───
-st.header("1. 作品情報を入力")
-col1, col2 = st.columns(2)
-with col1:
+
+# ─── 【変更】大枠を左右2分割（左側：入力窓・設定 / 右側：変換結果） ───
+left_panel, right_panel = st.columns([4, 6])
+
+with left_panel:
+    st.header("1. 作品情報を入力")
     input_m = st.text_input("メーカー名", placeholder="BANDAI, TAMIYA など")
     input_t = st.text_input("作品名（必須）", placeholder="HG ガンダム など")
-with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-st.header("2. 撮影情報を入力（Exifがない場合や書き換えたい場合）")
-col_e1, col_e2, col_e3 = st.columns(3)
-with col_e1:
+    st.header("2. 撮影情報を入力")
+    st.caption("Exifがない場合や書き換えたい場合に入力してください")
     manual_cam = st.text_input("カメラ名（任意）", placeholder="Sony α7IV, iPhone 15 など")
-with col_e2:
     manual_lens = st.text_input("レンズ名（任意）", placeholder="FE 35mm F1.4 など")
-with col_e3:
     manual_cond = st.text_input("撮影条件（任意）", placeholder="1/125s  f/2.8  ISO400 など")
 
-st.header("3. デザインと配置を設定")
-col_c1, col_c2 = st.columns(2)
-with col_c1:
+    st.header("3. デザインと配置を設定")
     text_color_hex = st.color_picker("文字の色を選んでください", "#000000")
-with col_c2:
     position_option = st.selectbox(
         "文字を配置する場所",
         ["左下（作品名）＆ 右下（撮影データ）", 
@@ -123,169 +119,166 @@ with col_c2:
          "右下（すべて配置）"]
     )
 
-col_f1, col_f2 = st.columns(2)
-with col_f1:
     selected_font_name = st.selectbox(
         "使用するフォント",
         options=list(VOLUME_FONTS.keys())
     )
     selected_font_path = VOLUME_FONTS[selected_font_name]
-with col_f2:
-    pass
 
-col_size1, col_size2 = st.columns(2)
-with col_size1:
     font_size_large = st.slider("作品名の文字サイズ", min_value=12, max_value=72, value=36, step=2)
-with col_size2:
     font_size_normal = st.slider("その他の文字サイズ", min_value=12, max_value=72, value=24, step=2)
 
-st.header("4. 画像をアップロード")
-uploaded_files = st.file_uploader(
-    "JPG / PNG 画像を選択（複数選択可）", 
-    type=["jpg", "jpeg", "png"], 
-    accept_multiple_files=True
-)
+    st.header("4. 画像をアップロード")
+    uploaded_files = st.file_uploader(
+        "JPG / PNG 画像を選択（複数選択可）", 
+        type=["jpg", "jpeg", "png"], 
+        accept_multiple_files=True
+    )
 
-if uploaded_files and input_t.strip():
+# ─── 右側：変換結果の表示エリア ───
+with right_panel:
     st.header("5. 変換結果")
     
-    center_text = input_t.strip()
-    manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
-    series_text = f"SER: {input_s}" if input_s.strip() else ""
-    left_sub_texts = [t for t in [manufacturer_text, series_text] if t != ""]
+    if uploaded_files and input_t.strip():
+        center_text = input_t.strip()
+        manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
+        series_text = f"SER: {input_s}" if input_s.strip() else ""
+        left_sub_texts = [t for t in [manufacturer_text, series_text] if t != ""]
 
-    text_color = hex_to_rgb(text_color_hex)
-    margin_px = 30
+        text_color = hex_to_rgb(text_color_hex)
+        margin_px = 30
 
-    # 【変更】2列（横並び）にするためのコンテナ用カラムを作成
-    cols = st.columns(2)
+        # 右側パネルの中で、さらに2列（横並び）のグリッドを作る
+        result_cols = st.columns(2)
 
-    for idx, uploaded_file in enumerate(uploaded_files):
-        # インデックスに応じて左右のカラムに振り分ける
-        current_col = cols[idx % 2]
-        
-        raw_img = Image.open(uploaded_file)
-        cam, lens, cond = get_exif_data(raw_img)
-
-        base_img = raw_img.convert("RGBA")
-        width, height = base_img.size
-        
-        if not cam and manual_cam.strip(): cam = manual_cam.strip()
-        if not lens and manual_lens.strip(): lens = manual_lens.strip()
-        if not cond and manual_cond.strip(): cond = manual_cond.strip()
-
-        right_texts = [
-            f"CAM: {cam}" if cam else "",
-            f"LNS: {lens}" if lens else "",
-            f"EXF: {cond}" if cond else ""
-        ]
-        right_texts = [t for t in [r for r in right_texts if r != ""]]
-
-        txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(txt_layer)
-
-        try:
-            if selected_font_path != "DEFAULT" and os.path.exists(selected_font_path):
-                font_normal = ImageFont.truetype(selected_font_path, font_size_normal)
-                font_large = ImageFont.truetype(selected_font_path, font_size_large)
-            else:
-                font_normal = font_large = ImageFont.load_default()
-        except Exception:
-            font_normal = font_large = ImageFont.load_default()
-
-        line_spacing = 8
-
-        left_heights = []
-        if center_text:
-            bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
-            left_heights.append(bbox_c[3] - bbox_c[1])
-        for t in left_sub_texts:
-            bbox_s = draw.textbbox((0, 0), t, font=font_normal)
-            left_heights.append(bbox_s[3] - bbox_s[1])
-        total_left_height = sum(left_heights) + (line_spacing * (len(left_heights) - 1)) if left_heights else 0
-
-        if right_texts:
-            right_bboxes = [draw.textbbox((0, 0), t, font=font_normal) for t in right_texts]
-            right_widths = [b[2] - b[0] for b in right_bboxes]
-            right_heights = [b[3] - b[1] for b in right_bboxes]
-            total_right_height = sum(right_heights) + (line_spacing * (len(right_texts) - 1))
-        else:
-            total_right_height = right_widths = right_heights = right_bboxes = 0
-
-        is_top = "右上" in position_option or "左上" in position_option
-        is_split = "＆" in position_option
-
-        if is_split:
-            text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
-        else:
-            text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
-
-        if is_top:
-            center_y = text_zone_height / 2
-        else:
-            center_y = height - (text_zone_height / 2)
-
-        if position_option == "左下（作品名）＆ 右下（撮影データ）" or position_option == "左上（作品名）＆ 右上（撮影データ）":
-            if left_heights:
-                current_y_left = center_y - (total_left_height / 2)
-                if center_text:
-                    bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
-                    draw.text((margin_px, current_y_left - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
-                    current_y_left += (bbox_c[3] - bbox_c[1]) + line_spacing
-                for t in left_sub_texts:
-                    bbox_s = draw.textbbox((0, 0), t, font=font_normal)
-                    draw.text((margin_px, current_y_left - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
-                    current_y_left += (bbox_s[3] - bbox_s[1]) + line_spacing
-
-            if right_texts:
-                current_y_right = center_y - (total_right_height / 2)
-                for i, t in enumerate(right_texts):
-                    text_x = width - margin_px - right_widths[i]
-                    draw.text((text_x, current_y_right - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
-                    current_y_right += right_heights[i] + line_spacing
-
-        else:
-            x_pos = margin_px if "左下" in position_option else None
-            current_y = center_y - (text_zone_height - margin_px * 2) / 2
+        for idx, uploaded_file in enumerate(uploaded_files):
+            # インデックスに応じて右パネル内の左右のカラムに振り分け
+            current_col = result_cols[idx % 2]
             
+            raw_img = Image.open(uploaded_file)
+            cam, lens, cond = get_exif_data(raw_img)
+
+            base_img = raw_img.convert("RGBA")
+            width, height = base_img.size
+            
+            if not cam and manual_cam.strip(): cam = manual_cam.strip()
+            if not lens and manual_lens.strip(): lens = manual_lens.strip()
+            if not cond and manual_cond.strip(): cond = manual_cond.strip()
+
+            right_texts = [
+                f"CAM: {cam}" if cam else "",
+                f"LNS: {lens}" if lens else "",
+                f"EXF: {cond}" if cond else ""
+            ]
+            right_texts = [t for t in [r for r in right_texts if r != ""]]
+
+            txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
+            draw = ImageDraw.Draw(txt_layer)
+
+            try:
+                if selected_font_path != "DEFAULT" and os.path.exists(selected_font_path):
+                    font_normal = ImageFont.truetype(selected_font_path, font_size_normal)
+                    font_large = ImageFont.truetype(selected_font_path, font_size_large)
+                else:
+                    font_normal = font_large = ImageFont.load_default()
+            except Exception:
+                font_normal = font_large = ImageFont.load_default()
+
+            line_spacing = 8
+
+            left_heights = []
             if center_text:
                 bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
-                final_x = x_pos if x_pos is not None else width - margin_px - (bbox_c[2] - bbox_c[0])
-                draw.text((final_x, current_y - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
-                current_y += (bbox_c[3] - bbox_c[1]) + line_spacing
+                left_heights.append(bbox_c[3] - bbox_c[1])
             for t in left_sub_texts:
                 bbox_s = draw.textbbox((0, 0), t, font=font_normal)
-                final_x = x_pos if x_pos is not None else width - margin_px - (bbox_s[2] - bbox_s[0])
-                draw.text((final_x, current_y - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
-                current_y += (bbox_s[3] - bbox_s[1]) + line_spacing
-                
-            if left_heights and right_texts:
-                current_y += line_spacing
-                
+                left_heights.append(bbox_s[3] - bbox_s[1])
+            total_left_height = sum(left_heights) + (line_spacing * (len(left_heights) - 1)) if left_heights else 0
+
             if right_texts:
-                for i, t in enumerate(right_texts):
-                    final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
-                    draw.text((final_x, current_y - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
-                    current_y += right_heights[i] + line_spacing
+                right_bboxes = [draw.textbbox((0, 0), t, font=font_normal) for t in right_texts]
+                right_widths = [b[2] - b[0] for b in right_bboxes]
+                right_heights = [b[3] - b[1] for b in right_bboxes]
+                total_right_height = sum(right_heights) + (line_spacing * (len(right_texts) - 1))
+            else:
+                total_right_height = right_widths = right_heights = right_bboxes = 0
 
-        final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
-        
-        # 【変更】現在の列（左右振り分け）に対してプレビューとボタンを描画
-        with current_col:
-            st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
-            
-            buf = io.BytesIO()
-            final_img.save(buf, format="JPEG", quality=95)
-            byte_im = buf.getvalue()
-            
-            st.download_button(
-                label=f"📥 ダウンロード ({uploaded_file.name})",
-                data=byte_im,
-                file_name=f"marked_{uploaded_file.name}",
-                mime="image/jpeg",
-                key=f"dl_{idx}" # 複数ボタンが競合しないようにキーを設定
-            )
-            st.write("---") # 区切り線
+            is_top = "右上" in position_option or "左上" in position_option
+            is_split = "＆" in position_option
 
-elif not input_t.strip() and uploaded_files:
-    st.warning("⚠️ 文字を入れるには『作品名』を入力してください。")
+            if is_split:
+                text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
+            else:
+                text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
+
+            if is_top:
+                center_y = text_zone_height / 2
+            else:
+                center_y = height - (text_zone_height / 2)
+
+            if position_option == "左下（作品名）＆ 右下（撮影データ）" or position_option == "左上（作品名）＆ 右上（撮影データ）":
+                if left_heights:
+                    current_y_left = center_y - (total_left_height / 2)
+                    if center_text:
+                        bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
+                        draw.text((margin_px, current_y_left - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
+                        current_y_left += (bbox_c[3] - bbox_c[1]) + line_spacing
+                    for t in left_sub_texts:
+                        bbox_s = draw.textbbox((0, 0), t, font=font_normal)
+                        draw.text((margin_px, current_y_left - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
+                        current_y_left += (bbox_s[3] - bbox_s[1]) + line_spacing
+
+                if right_texts:
+                    current_y_right = center_y - (total_right_height / 2)
+                    for i, t in enumerate(right_texts):
+                        text_x = width - margin_px - right_widths[i]
+                        draw.text((text_x, current_y_right - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
+                        current_y_right += right_heights[i] + line_spacing
+
+            else:
+                x_pos = margin_px if "左下" in position_option else None
+                current_y = center_y - (text_zone_height - margin_px * 2) / 2
+                
+                if center_text:
+                    bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
+                    final_x = x_pos if x_pos is not None else width - margin_px - (bbox_c[2] - bbox_c[0])
+                    draw.text((final_x, current_y - bbox_c[1]), center_text, fill=text_color + (255,), font=font_large)
+                    current_y += (bbox_c[3] - bbox_c[1]) + line_spacing
+                for t in left_sub_texts:
+                    bbox_s = draw.textbbox((0, 0), t, font=font_normal)
+                    final_x = x_pos if x_pos is not None else width - margin_px - (bbox_s[2] - bbox_s[0])
+                    draw.text((final_x, current_y - bbox_s[1]), t, fill=text_color + (255,), font=font_normal)
+                    current_y += (bbox_s[3] - bbox_s[1]) + line_spacing
+                    
+                if left_heights and right_texts:
+                    current_y += line_spacing
+                    
+                if right_texts:
+                    for i, t in enumerate(right_texts):
+                        final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
+                        draw.text((final_x, current_y - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
+                        current_y += right_heights[i] + line_spacing
+
+            final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
+            
+            # 各画像の表示処理
+            with current_col:
+                st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
+                
+                buf = io.BytesIO()
+                final_img.save(buf, format="JPEG", quality=95)
+                byte_im = buf.getvalue()
+                
+                st.download_button(
+                    label=f"📥 ダウンロード ({uploaded_file.name})",
+                    data=byte_im,
+                    file_name=f"marked_{uploaded_file.name}",
+                    mime="image/jpeg",
+                    key=f"dl_{idx}"
+                )
+                st.write("---")
+
+    elif not input_t.strip() and uploaded_files:
+        st.warning("⚠️ 文字を入れるには、左側パネルで『作品名』を入力してください。")
+    else:
+        st.info("💡 左側パネルで情報を入力し、画像をアップロードするとここに結果が表示されます。")
