@@ -150,7 +150,7 @@ if uploaded_files and input_t.strip():
         if not cond and manual_cond.strip(): cond = manual_cond.strip()
 
         right_texts = [
-            f"CAM: {cam}" if cam else "",
+            f"Shot on: {cam}" if cam else "",
             f"LNS: {lens}" if lens else "",
             f"EXF: {cond}" if cond else ""
         ]
