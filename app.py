@@ -116,7 +116,8 @@ with col_e3:
 st.header("3. デザインと配置を設定")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
-    text_color_hex = st.color_picker("文字の色を選んでください", "#FFFFFF")
+    # 【変更】初期カラーを白（#FFFFFF）から黒（#000000）に変更しました
+    text_color_hex = st.color_picker("文字の色を選んでください", "#000000")
 with col_c2:
     position_option = st.selectbox(
         "文字を配置する場所",
@@ -128,7 +129,6 @@ with col_c2:
 
 col_f1, col_f2 = st.columns(2)
 with col_f1:
-    # 同梱されたフォントやシステムフォントがここに並びます
     selected_font_name = st.selectbox(
         "使用するフォント",
         options=list(AVAILABLE_FONTS.keys())
@@ -179,7 +179,7 @@ if uploaded_files and input_t.strip():
         ]
         right_texts = [t for t in [r for r in right_texts if r != ""]]
 
-        txt_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
 
         try:
