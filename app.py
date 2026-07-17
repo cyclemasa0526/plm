@@ -18,7 +18,6 @@ def get_available_fonts():
     # 1. 【Webアプリ用最優先】プログラムと同じフォルダ内にあるフォントファイルを自動検索
     local_fonts = glob.glob("*.ttf") + glob.glob("*.otf") + glob.glob("*.ttc")
     for path in local_fonts:
-        # ファイル名（拡張子なし）を表示名にする
         name = os.path.splitext(os.path.basename(path))[0]
         available[f"📁 {name}"] = path
 
@@ -41,14 +40,12 @@ def get_available_fonts():
         if os.path.exists(path):
             available[name] = path
             
-    # 一つも見つからなかった場合のセーフティ
     if not available:
         available["システム標準フォント"] = "DEFAULT"
         
     return available
 
-# 利用可能なフォントリストを取得
-AVAILABLE_FONTS = get_available_fonts()
+VOLUME_FONTS = get_available_fonts()
 
 def get_exif_data(img):
     exif_data = {}
@@ -116,7 +113,6 @@ with col_e3:
 st.header("3. デザインと配置を設定")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
-    # 【変更】初期カラーを白（#FFFFFF）から黒（#000000）に変更しました
     text_color_hex = st.color_picker("文字の色を選んでください", "#000000")
 with col_c2:
     position_option = st.selectbox(
@@ -131,9 +127,9 @@ col_f1, col_f2 = st.columns(2)
 with col_f1:
     selected_font_name = st.selectbox(
         "使用するフォント",
-        options=list(AVAILABLE_FONTS.keys())
+        options=list(VOLUME_FONTS.keys())
     )
-    selected_font_path = AVAILABLE_FONTS[selected_font_name]
+    selected_font_path = VOLUME_FONTS[selected_font_name]
 with col_f2:
     pass
 
@@ -161,7 +157,13 @@ if uploaded_files and input_t.strip():
     text_color = hex_to_rgb(text_color_hex)
     margin_px = 30
 
-    for uploaded_file in uploaded_files:
+    # 【変更】2列（横並び）にするためのコンテナ用カラムを作成
+    cols = st.columns(2)
+
+    for idx, uploaded_file in enumerate(uploaded_files):
+        # インデックスに応じて左右のカラムに振り分ける
+        current_col = cols[idx % 2]
+        
         raw_img = Image.open(uploaded_file)
         cam, lens, cond = get_exif_data(raw_img)
 
@@ -267,17 +269,23 @@ if uploaded_files and input_t.strip():
                     current_y += right_heights[i] + line_spacing
 
         final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
-        st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
         
-        buf = io.BytesIO()
-        final_img.save(buf, format="JPEG", quality=95)
-        byte_im = buf.getvalue()
-        
-        st.download_button(
-            label=f"📥 {uploaded_file.name} をダウンロード",
-            data=byte_im,
-            file_name=f"marked_{uploaded_file.name}",
-            mime="image/jpeg"
-        )
+        # 【変更】現在の列（左右振り分け）に対してプレビューとボタンを描画
+        with current_col:
+            st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
+            
+            buf = io.BytesIO()
+            final_img.save(buf, format="JPEG", quality=95)
+            byte_im = buf.getvalue()
+            
+            st.download_button(
+                label=f"📥 ダウンロード ({uploaded_file.name})",
+                data=byte_im,
+                file_name=f"marked_{uploaded_file.name}",
+                mime="image/jpeg",
+                key=f"dl_{idx}" # 複数ボタンが競合しないようにキーを設定
+            )
+            st.write("---") # 区切り線
+
 elif not input_t.strip() and uploaded_files:
     st.warning("⚠️ 文字を入れるには『作品名』を入力してください。")
