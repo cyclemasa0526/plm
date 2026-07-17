@@ -2,6 +2,7 @@ import io
 import os
 import re
 import sys
+import glob
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
@@ -11,35 +12,36 @@ st.title("📸 プラモ画像 データ刻印ツール")
 st.write("画像からExif（撮影情報）の自動取得を試みます。読み込めない場合は手動入力も可能です。")
 
 def get_available_fonts():
-    """環境ごとに利用可能なフォントのパスと名前のマッピングを返す"""
-    # 候補となるフォント設定 (名前: パス)
+    """同じフォルダ内のフォントファイルと、環境ごとのシステムフォントを統合して返す"""
+    available = {}
+
+    # 1. 【Webアプリ用最優先】プログラムと同じフォルダ内にあるフォントファイルを自動検索
+    local_fonts = glob.glob("*.ttf") + glob.glob("*.otf") + glob.glob("*.ttc")
+    for path in local_fonts:
+        # ファイル名（拡張子なし）を表示名にする
+        name = os.path.splitext(os.path.basename(path))[0]
+        available[f"📁 {name}"] = path
+
+    # 2. システムフォントの候補（PCローカル環境用バックアップ）
     font_candidates = {
-        "Noto Serif JP (同梱フォント)": "NotoSerifJP-Regular.ttf",
-        # Windows
         "游明朝 (Windows)": "C:\\Windows\\Fonts\\yumin.ttf",
         "游ゴシック (Windows)": "C:\\Windows\\Fonts\\yuitalic.ttf",
         "メイリオ (Windows)": "C:\\Windows\\Fonts\\meiryo.ttc",
         "MS Pゴシック (Windows)": "C:\\Windows\\Fonts\\msgothic.ttc",
         "MS P明朝 (Windows)": "C:\\Windows\\Fonts\\msmincho.ttc",
-        # Mac
         "ヒラギノ明朝 ProN (Mac)": "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
         "ヒラギノ角ゴ ProN (Mac)": "/System/Library/Fonts/ヒラギノ角ゴ ProN.ttc",
         "クレー (Mac)": "/System/Library/Fonts/Klee.ttc",
-        # Linux / Streamlit Cloud用バックアップ
         "Noto Sans CJK (Linux)": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "IPAex明朝 (Linux)": "/usr/share/fonts/truetype/ipaexfont/ipaexm.ttf",
-        "IPAexゴシック (Linux)": "/usr/share/fonts/truetype/ipaexfont/ipaexg.ttf",
         "D標音ゴシック (Linux)": "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
         "D標音明朝 (Linux)": "/usr/share/fonts/truetype/fonts-japanese-mincho.ttf",
     }
     
-    # 実際に存在するフォントだけを絞り込む
-    available = {}
     for name, path in font_candidates.items():
         if os.path.exists(path):
             available[name] = path
             
-    # もし一つも見つからなかった場合のセーフティ
+    # 一つも見つからなかった場合のセーフティ
     if not available:
         available["システム標準フォント"] = "DEFAULT"
         
@@ -89,7 +91,6 @@ def get_exif_data(img):
     cond = "  ".join(cond_list)
     return cam, lens, cond
 
-# HEXカラーコードをRGBタプルに変換する関数
 def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
@@ -103,7 +104,6 @@ with col1:
 with col2:
     input_s = st.text_input("シリーズ名", placeholder="宇宙世紀, HGUC など")
 
-# ─── 撮影データの手動入力 ───
 st.header("2. 撮影情報を入力（Exifがない場合や書き換えたい場合）")
 col_e1, col_e2, col_e3 = st.columns(3)
 with col_e1:
@@ -113,7 +113,6 @@ with col_e2:
 with col_e3:
     manual_cond = st.text_input("撮影条件（任意）", placeholder="1/125s  f/2.8  ISO400 など")
 
-# ─── デザイン・位置設定 ───
 st.header("3. デザインと配置を設定")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
@@ -129,7 +128,7 @@ with col_c2:
 
 col_f1, col_f2 = st.columns(2)
 with col_f1:
-    # 【新機能】フォントの選択ボックス
+    # 同梱されたフォントやシステムフォントがここに並びます
     selected_font_name = st.selectbox(
         "使用するフォント",
         options=list(AVAILABLE_FONTS.keys())
@@ -151,7 +150,6 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# 処理実行
 if uploaded_files and input_t.strip():
     st.header("5. 変換結果")
     
@@ -161,20 +159,15 @@ if uploaded_files and input_t.strip():
     left_sub_texts = [t for t in [manufacturer_text, series_text] if t != ""]
 
     text_color = hex_to_rgb(text_color_hex)
-    margin_px = 30  # 画像の端からの余白
+    margin_px = 30
 
     for uploaded_file in uploaded_files:
-        # まずは生の状態で画像を開く（Exifを保持するため）
         raw_img = Image.open(uploaded_file)
-
-        # Exifデータの自動取得を「RGBAに変換する前」に実行する
         cam, lens, cond = get_exif_data(raw_img)
 
-        # Exif抽出後に、描画レイヤー処理のためRGBAに変換する
         base_img = raw_img.convert("RGBA")
         width, height = base_img.size
         
-        # もし自動取得できず、かつ手動入力があればそちらを採用する
         if not cam and manual_cam.strip(): cam = manual_cam.strip()
         if not lens and manual_lens.strip(): lens = manual_lens.strip()
         if not cond and manual_cond.strip(): cond = manual_cond.strip()
@@ -189,7 +182,6 @@ if uploaded_files and input_t.strip():
         txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
 
-        # 【新機能対応】選択されたフォントの読み込み処理
         try:
             if selected_font_path != "DEFAULT" and os.path.exists(selected_font_path):
                 font_normal = ImageFont.truetype(selected_font_path, font_size_normal)
@@ -201,7 +193,6 @@ if uploaded_files and input_t.strip():
 
         line_spacing = 8
 
-        # ─── 各テキストのサイズ計算 ───
         left_heights = []
         if center_text:
             bbox_c = draw.textbbox((0, 0), center_text, font=font_large)
@@ -219,7 +210,6 @@ if uploaded_files and input_t.strip():
         else:
             total_right_height = right_widths = right_heights = right_bboxes = 0
 
-        # ─── 配置エリアの計算 ───
         is_top = "右上" in position_option or "左上" in position_option
         is_split = "＆" in position_option
 
@@ -233,7 +223,6 @@ if uploaded_files and input_t.strip():
         else:
             center_y = height - (text_zone_height / 2)
 
-        # ─── 文字描画 ───
         if position_option == "左下（作品名）＆ 右下（撮影データ）" or position_option == "左上（作品名）＆ 右上（撮影データ）":
             if left_heights:
                 current_y_left = center_y - (total_left_height / 2)
@@ -277,13 +266,9 @@ if uploaded_files and input_t.strip():
                     draw.text((final_x, current_y - right_bboxes[i][1]), t, fill=text_color + (255,), font=font_normal)
                     current_y += right_heights[i] + line_spacing
 
-        # 合成
         final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
-
-        # プレビュー表示
         st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
         
-        # ダウンロード
         buf = io.BytesIO()
         final_img.save(buf, format="JPEG", quality=95)
         byte_im = buf.getvalue()
