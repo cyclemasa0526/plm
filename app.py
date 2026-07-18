@@ -156,7 +156,7 @@ with right_panel:
             if not lens and manual_lens.strip(): lens = manual_lens.strip()
             if not cond and manual_cond.strip(): cond = manual_cond.strip()
 
-            right_texts = [f"CAM: {cam}" if cam else "", f"LNS: {lens}" if lens else "", f"EXF: {cond}" if cond else ""]
+            right_texts = [f"Shot on: {cam}" if cam else "", f"LNS: {lens}" if lens else "", f"EXF: {cond}" if cond else ""]
             right_texts = [t for t in [r for r in right_texts if r != ""]]
 
             txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
