@@ -2,7 +2,6 @@ import io
 import os
 import re
 import sys
-import glob
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
@@ -10,35 +9,11 @@ from PIL import Image, ImageDraw, ImageFont
 st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="wide")
 
 st.title("📸 プラモ画像 データ刻印ツール")
-st.write("作品情報内の日本語と英数字を自動判別し、別々のフォントで綺麗にミックスして刻印します。")
+st.write("作品情報内の日本語と英数字を自動判別し、別々のフォント（Noto Serif JP × Oswald）で綺麗にミックスして刻印します。")
 
-def get_available_fonts():
-    available = {}
-    local_fonts = glob.glob("*.ttf") + glob.glob("*.otf") + glob.glob("*.ttc")
-    for path in local_fonts:
-        name = os.path.splitext(os.path.basename(path))[0]
-        available[f"📁 {name}"] = path
-
-    font_candidates = {
-        "游明朝 (Windows)": "C:\\Windows\\Fonts\\yumin.ttf",
-        "游ゴシック (Windows)": "C:\\Windows\\Fonts\\yuitalic.ttf",
-        "メイリオ (Windows)": "C:\\Windows\\Fonts\\meiryo.ttc",
-        "MS Pゴシック (Windows)": "C:\\Windows\\Fonts\\msgothic.ttc",
-        "MS P明朝 (Windows)": "C:\\Windows\\Fonts\\msmincho.ttc",
-        "ヒラギノ明朝 ProN (Mac)": "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
-        "ヒラギノ角ゴ ProN (Mac)": "/System/Library/Fonts/ヒラギノ角ゴ ProN.ttc",
-        "クレー (Mac)": "/System/Library/Fonts/Klee.ttc",
-        "Noto Sans CJK (Linux)": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    }
-    for name, path in font_candidates.items():
-        if os.path.exists(path):
-            available[name] = path
-            
-    if not available:
-        available["システム標準フォント"] = "DEFAULT"
-    return available
-
-VOLUME_FONTS = get_available_fonts()
+# 使用するフォントファイルを固定定義
+FONT_PATH_JA = "NotoSerifJP-Regular.ttf"
+FONT_PATH_EN = "Oswald-VariableFont_wght.ttf"
 
 def get_exif_data(img):
     exif_data = {}
@@ -84,31 +59,21 @@ def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
-# ─── 【重要】日英混植のための判定＆描画ロジック ───
 def split_ja_en(text):
-    """文字列を英数字ブロックと日本語ブロックに分解する"""
-    # 半角英数字、スペース、記号の連続にマッチする正規表現
     tokens = re.split(r'([A-Za-z0-9\s\-\.\,\:\/\(\)\[\]\&\#\+\=\_\*\!\?]+)', text)
     return [t for t in tokens if t]
 
 def draw_mixed_text(draw, x, y, text, font_ja, font_en, fill):
-    """日本語と英語のフォントを切り替えながら横一行に描画する"""
     current_x = x
     blocks = split_ja_en(text)
     for block in blocks:
-        # ブロックが英数字のみ（または空白・記号）で構成されているか判定
         is_en = re.match(r'^[A-Za-z0-9\s\-\.\,\:\/\(\)\[\]\&\#\+\=\_\*\!\?]+$', block)
         font = font_en if is_en else font_ja
-        
-        # 描画
         draw.text((current_x, y), block, font=font, fill=fill)
-        
-        # 次の文字の描画位置をずらすための幅を計算
         bbox = draw.textbbox((0, 0), block, font=font)
         current_x += (bbox[2] - bbox[0])
 
 def get_mixed_text_size(draw, text, font_ja, font_en):
-    """混植テキスト全体の幅と高さを計算する"""
     total_width = 0
     max_height = 0
     blocks = split_ja_en(text)
@@ -137,21 +102,24 @@ with left_panel:
 
     st.header("3. デザインと配置を設定")
     text_color_hex = st.color_picker("文字の色を選んでください", "#000000")
+    
     position_option = st.selectbox(
         "文字を配置する場所",
-        ["左下（作品名）＆ 右下（撮影データ）", "左上（作品名）＆ 右上（撮影データ）", "左下（すべて配置）", "右下（すべて配置）"]
+        ["左下（作品名）＆ 右下（撮影データ）", 
+         "左上（作品名）＆ 右上（撮影データ）", 
+         "左下（すべて配置）", 
+         "右下（すべて配置）",
+         "左上（すべて配置）",
+         "右上（すべて配置）"]
     )
 
-    font_options = list(VOLUME_FONTS.keys())
-    selected_jp_font_name = st.selectbox("ベースにする日本語フォント", options=font_options, index=0)
-    selected_jp_font_path = VOLUME_FONTS[selected_jp_font_name]
-
-    default_en_index = min(1, len(font_options) - 1)
-    selected_en_font_name = st.selectbox("英数字用の英語フォント", options=font_options, index=default_en_index)
-    selected_en_font_path = VOLUME_FONTS[selected_en_font_name]
+    st.caption("※フォントは「Noto Serif JP」(日本語) と 「Oswald」(英数字) に固定されています。")
 
     font_size_large = st.slider("作品名の文字サイズ", min_value=12, max_value=72, value=36, step=2)
     font_size_normal = st.slider("その他の文字サイズ", min_value=12, max_value=72, value=24, step=2)
+    
+    # 【新機能】行間（上下の文字の隙間）を微調整できるスライダー（初期値16）
+    line_spacing = st.slider("行間の広さ（余白）", min_value=0, max_value=40, value=16, step=2)
 
     st.header("4. 画像をアップロード")
     uploaded_files = st.file_uploader("JPG / PNG 画像を選択（複数選択可）", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
@@ -162,6 +130,7 @@ with right_panel:
     
     if uploaded_files and input_t.strip():
         center_text = input_t.strip()
+        # 前回追加した固定文字との間のスペースはそのまま維持
         manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
         series_text = f"SER: {input_s}" if input_s.strip() else ""
         left_sub_texts = [t for t in [manufacturer_text, series_text] if t != ""]
@@ -182,31 +151,28 @@ with right_panel:
             if not lens and manual_lens.strip(): lens = manual_lens.strip()
             if not cond and manual_cond.strip(): cond = manual_cond.strip()
 
-            right_texts = [f"Shot on: {cam}" if cam else "", f"LNS: {lens}" if lens else "", f"EXF: {cond}" if cond else ""]
+            right_texts = [f"CAM: {cam}" if cam else "", f"LNS: {lens}" if lens else "", f"EXF: {cond}" if cond else ""]
             right_texts = [t for t in [r for r in right_texts if r != ""]]
 
             txt_layer = Image.new("RGBA", base_img.size, (255, 255, 255, 0))
             draw = ImageDraw.Draw(txt_layer)
 
-            # 各フォントオブジェクトの用意（大サイズ・通常サイズ）
             try:
-                if selected_jp_font_path != "DEFAULT" and os.path.exists(selected_jp_font_path):
-                    f_jp_l = ImageFont.truetype(selected_jp_font_path, font_size_large)
-                    f_jp_n = ImageFont.truetype(selected_jp_font_path, font_size_normal)
+                if os.path.exists(FONT_PATH_JA):
+                    f_jp_l = ImageFont.truetype(FONT_PATH_JA, font_size_large)
+                    f_jp_n = ImageFont.truetype(FONT_PATH_JA, font_size_normal)
                 else:
                     f_jp_l = f_jp_n = ImageFont.load_default()
 
-                if selected_en_font_path != "DEFAULT" and os.path.exists(selected_en_font_path):
-                    f_en_l = ImageFont.truetype(selected_en_font_path, font_size_large)
-                    f_en_n = ImageFont.truetype(selected_en_font_path, font_size_normal)
+                if os.path.exists(FONT_PATH_EN):
+                    f_en_l = ImageFont.truetype(FONT_PATH_EN, font_size_large)
+                    f_en_n = ImageFont.truetype(FONT_PATH_EN, font_size_normal)
                 else:
                     f_en_l = f_en_n = ImageFont.load_default()
             except Exception:
                 f_jp_l = f_jp_n = f_en_l = f_en_n = ImageFont.load_default()
 
-            line_spacing = 8
-
-            # ─── 高さと幅の計算（混植対応版） ───
+            # 各テキストのサイズ計算
             left_heights = []
             left_widths = []
             if center_text:
@@ -222,12 +188,13 @@ with right_panel:
             right_heights = []
             right_widths = []
             for t in right_texts:
-                w, h = get_mixed_text_size(draw, t, f_jp_n, f_en_n) # 撮影データも一応混植対応
+                w, h = get_mixed_text_size(draw, t, f_jp_n, f_en_n)
                 right_heights.append(h)
                 right_widths.append(w)
             total_right_height = sum(right_heights) + (line_spacing * (len(right_texts) - 1)) if right_texts else 0
 
-            is_top = "右上" in position_option or "左上" in position_option
+            # 配置の判定
+            is_top = "上" in position_option
             is_split = "＆" in position_option
 
             if is_split:
@@ -235,13 +202,14 @@ with right_panel:
             else:
                 text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
 
-            center_y = text_zone_height / 2 if is_top else height - (text_zone_height / 2)
+            if is_top:
+                center_y = margin_px + (text_zone_height - margin_px * 2) / 2
+            else:
+                center_y = height - margin_px - (text_zone_height - margin_px * 2) / 2
 
-            # ─── 描画処理（混植関数を呼び出し） ───
             fill_color = text_color + (255,)
 
             if is_split:
-                # 【分割配置モード】左側に作品情報、右側に撮影データ
                 if left_heights:
                     current_y_left = center_y - (total_left_height / 2)
                     if center_text:
@@ -259,8 +227,7 @@ with right_panel:
                         draw_mixed_text(draw, text_x, current_y_right, t, f_jp_n, f_en_n, fill_color)
                         current_y_right += right_heights[i] + line_spacing
             else:
-                # 【片側寄せモード】すべてを片側にまとめて配置
-                x_pos = margin_px if "左下" in position_option else None
+                x_pos = margin_px if "左" in position_option else None
                 current_y = center_y - (text_zone_height - margin_px * 2) / 2
                 
                 if center_text:
