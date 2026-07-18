@@ -123,6 +123,13 @@ with left_panel:
     st.header("4. 画像をアップロード")
     uploaded_files = st.file_uploader("JPG / PNG 画像を選択（複数選択可）", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
+    # 【新機能】ファイル名変更のプレビュー表示
+    if uploaded_files:
+        st.write("📁 **保存時のファイル名（予定）:**")
+        prefix = input_t.strip() if input_t.strip() else "未入力"
+        for f in uploaded_files:
+            st.caption(f" ┗ `{prefix}_{f.name}`")
+
 # ─── 右側：変換結果の表示エリア ───
 with right_panel:
     st.header("5. 変換結果")
@@ -198,7 +205,6 @@ with right_panel:
             fill_color = text_color + (255,)
 
             if is_split:
-                # ─── 左右振り分け配置 ───
                 text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
                 if is_top:
                     center_y = margin_px + (text_zone_height - margin_px * 2) / 2
@@ -222,12 +228,9 @@ with right_panel:
                         draw_mixed_text(draw, text_x, current_y_right, t, f_jp_n, f_en_n, fill_color)
                         current_y_right += right_heights[i] + line_spacing
             else:
-                # ─── 片側寄せ配置（修正ポイント） ───
-                # 作品データと撮影データを一本化した場合の全高を正しく合算
                 total_all_lines = len(left_heights) + len(right_heights)
                 total_all_height = sum(left_heights) + sum(right_heights) + (line_spacing * (total_all_lines - 1) if total_all_lines > 0 else 0)
 
-                # 画像の端（margin_px）を基準に、開始Y座標をガチッと固定計算
                 if is_top:
                     current_y = margin_px
                 else:
@@ -235,7 +238,6 @@ with right_panel:
 
                 x_pos = margin_px if "左" in position_option else None
                 
-                # 1. 作品名・メーカー名等の描画
                 if center_text:
                     final_x = x_pos if x_pos is not None else width - margin_px - left_widths[0]
                     draw_mixed_text(draw, final_x, current_y, center_text, f_jp_l, f_en_l, fill_color)
@@ -246,7 +248,6 @@ with right_panel:
                     draw_mixed_text(draw, final_x, current_y, t, f_jp_n, f_en_n, fill_color)
                     current_y += left_heights[i + idx_offset] + line_spacing
                     
-                # 2. 撮影データの描画
                 if right_texts:
                     for i, t in enumerate(right_texts):
                         final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
@@ -255,6 +256,9 @@ with right_panel:
 
             final_img = Image.alpha_composite(base_img, txt_layer).convert("RGB")
             
+            # 【修正】保存時のダウンロードファイル名を「作品名_元のファイル名」に変更
+            download_filename = f"{center_text}_{uploaded_file.name}"
+
             with current_col:
                 st.image(final_img, caption=f"変換完了: {uploaded_file.name}", use_container_width=True)
                 buf = io.BytesIO()
@@ -264,7 +268,7 @@ with right_panel:
                 st.download_button(
                     label=f"📥 ダウンロード ({uploaded_file.name})",
                     data=byte_im,
-                    file_name=f"marked_{uploaded_file.name}",
+                    file_name=download_filename,
                     mime="image/jpeg",
                     key=f"dl_{idx}"
                 )
