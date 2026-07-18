@@ -118,7 +118,6 @@ with left_panel:
     font_size_large = st.slider("作品名の文字サイズ", min_value=12, max_value=72, value=36, step=2)
     font_size_normal = st.slider("その他の文字サイズ", min_value=12, max_value=72, value=24, step=2)
     
-    # 【新機能】行間（上下の文字の隙間）を微調整できるスライダー（初期値16）
     line_spacing = st.slider("行間の広さ（余白）", min_value=0, max_value=40, value=16, step=2)
 
     st.header("4. 画像をアップロード")
@@ -130,7 +129,6 @@ with right_panel:
     
     if uploaded_files and input_t.strip():
         center_text = input_t.strip()
-        # 前回追加した固定文字との間のスペースはそのまま維持
         manufacturer_text = f"MFR: {input_m}" if input_m.strip() else ""
         series_text = f"SER: {input_s}" if input_s.strip() else ""
         left_sub_texts = [t for t in [manufacturer_text, series_text] if t != ""]
@@ -197,19 +195,16 @@ with right_panel:
             is_top = "上" in position_option
             is_split = "＆" in position_option
 
-            if is_split:
-                text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
-            else:
-                text_zone_height = total_left_height + total_right_height + (line_spacing if total_left_height and total_right_height else 0) + (margin_px * 2)
-
-            if is_top:
-                center_y = margin_px + (text_zone_height - margin_px * 2) / 2
-            else:
-                center_y = height - margin_px - (text_zone_height - margin_px * 2) / 2
-
             fill_color = text_color + (255,)
 
             if is_split:
+                # ─── 左右振り分け配置 ───
+                text_zone_height = max(total_left_height, total_right_height) + (margin_px * 2)
+                if is_top:
+                    center_y = margin_px + (text_zone_height - margin_px * 2) / 2
+                else:
+                    center_y = height - margin_px - (text_zone_height - margin_px * 2) / 2
+
                 if left_heights:
                     current_y_left = center_y - (total_left_height / 2)
                     if center_text:
@@ -227,9 +222,20 @@ with right_panel:
                         draw_mixed_text(draw, text_x, current_y_right, t, f_jp_n, f_en_n, fill_color)
                         current_y_right += right_heights[i] + line_spacing
             else:
+                # ─── 片側寄せ配置（修正ポイント） ───
+                # 作品データと撮影データを一本化した場合の全高を正しく合算
+                total_all_lines = len(left_heights) + len(right_heights)
+                total_all_height = sum(left_heights) + sum(right_heights) + (line_spacing * (total_all_lines - 1) if total_all_lines > 0 else 0)
+
+                # 画像の端（margin_px）を基準に、開始Y座標をガチッと固定計算
+                if is_top:
+                    current_y = margin_px
+                else:
+                    current_y = height - margin_px - total_all_height
+
                 x_pos = margin_px if "左" in position_option else None
-                current_y = center_y - (text_zone_height - margin_px * 2) / 2
                 
+                # 1. 作品名・メーカー名等の描画
                 if center_text:
                     final_x = x_pos if x_pos is not None else width - margin_px - left_widths[0]
                     draw_mixed_text(draw, final_x, current_y, center_text, f_jp_l, f_en_l, fill_color)
@@ -240,9 +246,7 @@ with right_panel:
                     draw_mixed_text(draw, final_x, current_y, t, f_jp_n, f_en_n, fill_color)
                     current_y += left_heights[i + idx_offset] + line_spacing
                     
-                if left_heights and right_texts:
-                    current_y += line_spacing
-                    
+                # 2. 撮影データの描画
                 if right_texts:
                     for i, t in enumerate(right_texts):
                         final_x = x_pos if x_pos is not None else width - margin_px - right_widths[i]
