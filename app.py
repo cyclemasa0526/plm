@@ -11,8 +11,8 @@ st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout
 st.title("📸 プラモ画像 データ刻印ツール")
 st.write("入力した作品名等＋画像のexifデータを刻印します。")
 
-# 使用するフォントファイルを固定定義 NotoSerifJP-Regular.ttf NotoSansJP-VariableFont_wght.ttf
-FONT_PATH_JA = "DelaGothicOne-Regular.ttf"
+# 使用するフォントファイルを固定定義  NotoSansJP-VariableFont_wght.ttf DelaGothicOne-Regular.ttf
+FONT_PATH_JA = "NotoSerifJP-Regular.ttf"
 FONT_PATH_EN = "Oswald-VariableFont_wght.ttf"
 
 def get_exif_data(img):
