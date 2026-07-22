@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 st.set_page_config(page_title="プラモ画像 データ刻印ツール", layout="wide")
 
 st.title("📸 プラモ画像 データ刻印ツール")
-st.write("入力した作品名等。画像のexifデータを刻印します。")
+st.write("入力した作品名等＋画像のexifデータを刻印します。")
 
 # 使用するフォントファイルを固定定義
 FONT_PATH_JA = "NotoSerifJP-Regular.ttf"
